@@ -6,8 +6,8 @@ PID_IncTypeDef *speed_pid=&spid;
 
 void Speed_PID_Init(int set_speed)
 {
-	speed_pid->Kp=100;
-	speed_pid->Ki=0;
+	speed_pid->Kp=0.08;
+	speed_pid->Ki=0.03;
 	speed_pid->Kd=0;
 	speed_pid->expect_value=set_speed;
 }

@@ -20,6 +20,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dma.h"
 #include "i2c.h"
 #include "spi.h"
 #include "tim.h"
@@ -32,6 +33,8 @@
 #include "oled.h"
 #include "pid.h"
 #include "mpu6050.h"
+#include "control.h"
+#include "st7533.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -65,11 +68,19 @@ int Count_L_B=0;
 int Count_R_F=0;
 int Count_R_B=0;
 
+char LF_str[50]="";
+char LB_str[50]="";
+char RF_str[50]="";
+char RB_str[50]="";
+
 //输出速度
 float PWM_Value_L_F=0;
 float PWM_Value_L_B=0;
 float PWM_Value_R_F=0;
 float PWM_Value_R_B=0;
+
+//接收数据
+uint8_t get_buff[1]="";
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -112,6 +123,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
@@ -121,9 +133,9 @@ int main(void)
   MX_SPI1_Init();
   MX_TIM5_Init();
   MX_TIM6_Init();
+  MX_UART5_Init();
   /* USER CODE BEGIN 2 */
-	HAL_TIM_PWM_Start(&htim5,TIM_CHANNEL_1);
-	HAL_TIM_PWM_Start(&htim5,TIM_CHANNEL_2);
+	Motor_Init();
 	
 	HAL_TIM_Encoder_Start(&htim1,TIM_CHANNEL_ALL);	//左前
 	HAL_TIM_Encoder_Start(&htim2,TIM_CHANNEL_ALL);  //左后
@@ -138,6 +150,12 @@ int main(void)
 	__HAL_TIM_SET_COUNTER(&htim3,32767);
 	__HAL_TIM_SET_COUNTER(&htim4,32767);
 	
+	
+	Speed_PID_Init(100);
+	
+	lcd7735_ini();
+	lcd7735_fillrect(0,0,128,160,BLACK);
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -147,12 +165,31 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-		TIM5->CCR1=50;
-		TIM5->CCR2=50;HAL_GPIO_WritePin(LF_IN1_GPIO_Port,LF_IN1_Pin,GPIO_PIN_SET);
-		HAL_GPIO_WritePin(LF_IN1_GPIO_Port,LF_IN1_Pin,GPIO_PIN_SET);
-		HAL_GPIO_WritePin(LF_IN2_GPIO_Port,LF_IN2_Pin,GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(LB_IN1_GPIO_Port,LB_IN1_Pin,GPIO_PIN_SET);
-		HAL_GPIO_WritePin(LB_IN2_GPIO_Port,LB_IN2_Pin,GPIO_PIN_RESET);
+		//Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,FRONT);
+		Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,BACK);
+		sprintf(LF_str,"LF:%06d",Count_L_F);
+		lcd7735_putstr(0,0,LF_str,WHITE,BLACK);
+		
+		sprintf(LB_str,"LB:%06d",Count_L_B);
+		lcd7735_putstr(12,0,LB_str,WHITE,BLACK);
+		
+		sprintf(RF_str,"RF:%06d",Count_R_F);
+		lcd7735_putstr(24,0,RF_str,WHITE,BLACK);
+		
+		sprintf(RB_str,"RB:%06d",Count_R_B);
+		lcd7735_putstr(36,0,RB_str,WHITE,BLACK);
+		
+		sprintf(LF_str,"LF_DUTY:%.2f",PWM_Value_L_F);
+		lcd7735_putstr(48,0,LF_str,WHITE,BLACK);
+		
+		sprintf(LB_str,"LB_DUTY:%.2f",PWM_Value_L_B);
+		lcd7735_putstr(60,0,LB_str,WHITE,BLACK);
+		
+		sprintf(RF_str,"RF_DUTY:%.2f",PWM_Value_R_F);
+		lcd7735_putstr(72,0,RF_str,WHITE,BLACK);
+		
+		sprintf(RB_str,"RB_DUTY:%.2f",PWM_Value_R_B);
+		lcd7735_putstr(84,0,RB_str,WHITE,BLACK);
   }
   /* USER CODE END 3 */
 }
@@ -202,8 +239,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	if(htim==(&htim6))
 	{
 		time_count++;
-	  if(time_count>1000)
+	  if(time_count>100)
 		{
+			HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
+			
 			Get_Count_L_F=__HAL_TIM_GET_COUNTER(&htim1);
 			Get_Count_L_B=__HAL_TIM_GET_COUNTER(&htim2);
 			Get_Count_R_F=__HAL_TIM_GET_COUNTER(&htim3);
@@ -223,16 +262,35 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			if(Count_R_B<0)
 				Count_R_B=-Count_R_B;
 			
-			Speed_Adjust(Count_L_F);
-			Speed_Adjust(Count_L_B);
-			Speed_Adjust(Count_R_F);
-			Speed_Adjust(Count_R_B);
+			PWM_Value_L_F+=Speed_Adjust(Count_L_F);
+			if(PWM_Value_L_F>90)
+				PWM_Value_L_F=90;
+			if(PWM_Value_L_F<0)
+				PWM_Value_L_F=0;
+			PWM_Value_L_B+=Speed_Adjust(Count_L_B);
+			if(PWM_Value_L_B>90)
+				PWM_Value_L_B=90;
+			if(PWM_Value_L_B<0)
+				PWM_Value_L_B=0;
+			PWM_Value_R_F+=Speed_Adjust(Count_R_F);
+			if(PWM_Value_R_F>90)
+				PWM_Value_R_F=90;
+			if(PWM_Value_R_F<0)
+				PWM_Value_R_F=0;
+			PWM_Value_R_B+=Speed_Adjust(Count_R_B);
+			if(PWM_Value_R_B>90)
+				PWM_Value_R_B=90;
+			if(PWM_Value_R_B<0)
+				PWM_Value_R_B=0;
 			
 			__HAL_TIM_SET_COUNTER(&htim1,32767);
 			__HAL_TIM_SET_COUNTER(&htim2,32767);
 			__HAL_TIM_SET_COUNTER(&htim3,32767);
 			__HAL_TIM_SET_COUNTER(&htim4,32767);
+			
+			time_count=0;
 		}
+		
 	}
 
 }
