@@ -190,6 +190,7 @@ int main(void)
 		
 		sprintf(RB_str,"RB_DUTY:%.2f",PWM_Value_R_B);
 		lcd7735_putstr(84,0,RB_str,WHITE,BLACK);
+
   }
   /* USER CODE END 3 */
 }
@@ -257,7 +258,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				Count_L_F=-Count_L_F;
 			if(Count_L_B<0)
 				Count_L_B=-Count_L_B;
-			if(Count_R_F<0)
+				if(Count_R_F<0)
 				Count_R_F=-Count_R_F;
 			if(Count_R_B<0)
 				Count_R_B=-Count_R_B;
