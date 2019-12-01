@@ -28,7 +28,9 @@ typedef struct
 }PID_IncTypeDef;
 
 void Speed_PID_Init(int set_speed);
+void Turn_PID_Init();
 float Speed_Adjust(int now_speed);
+float Turn_Speed_Add(int angle);
 
 
 

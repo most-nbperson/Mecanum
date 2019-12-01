@@ -10,7 +10,7 @@ enum Motors
 
 enum Directions
 {
-	FRONT,BACK,LEFT,RIGHT,
+	FRONT,BACK,LEFT,RIGHT,STOP,
 	LEFT_FRONT,LEFT_BACK,RIGHT_FRONT,RIGHT_BACK,
 	TURN_RIGHT,TURN_LEFT
 };
@@ -18,6 +18,6 @@ enum Directions
 void Motor_Init();
 void Control(uint8_t motors,uint16_t speed,uint8_t direction);
 void Move(uint16_t LF_speed,uint16_t LB_speed,uint16_t RF_speed,uint16_t RB_speed,uint8_t direction);
-
+void Auto_Control(uint16_t L_speed,uint16_t R_speed);
 
 #endif

@@ -30,6 +30,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <math.h>
+#include <string.h>
 #include "oled.h"
 #include "pid.h"
 #include "mpu6050.h"
@@ -68,10 +69,7 @@ int Count_L_B=0;
 int Count_R_F=0;
 int Count_R_B=0;
 
-char LF_str[50]="";
-char LB_str[50]="";
-char RF_str[50]="";
-char RB_str[50]="";
+
 
 //输出速度
 float PWM_Value_L_F=0;
@@ -80,13 +78,26 @@ float PWM_Value_R_F=0;
 float PWM_Value_R_B=0;
 
 //接收数据
-uint8_t get_buff[1]="";
+char get_buff[8]="";//接收的一组数据包
+char control_angle[4]="";//角度绝对值
+char control_angle_single[1]="";//角度符号
+
+int angle=0;//角度
+uint8_t get_direction;//方向
+uint8_t control_begin=0;//开始控制标志 0为未接入控制不做pid运算 1为已经开始控制开始pid运算
+uint8_t angle_control_flag=0;//使用角度控制标志 0为方向控制 1为角度控制
+
+//Debug
+char show_str[50]="";
+
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+void Data_Process(void);
+void Debug_Window(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -150,9 +161,9 @@ int main(void)
 	__HAL_TIM_SET_COUNTER(&htim3,32767);
 	__HAL_TIM_SET_COUNTER(&htim4,32767);
 	
-	
-	Speed_PID_Init(100);
-	
+	HAL_UART_Receive_DMA(&huart4, (uint8_t*)get_buff, 8);
+	Speed_PID_Init(75);
+	Turn_PID_Init();
 	lcd7735_ini();
 	lcd7735_fillrect(0,0,128,160,BLACK);
 	
@@ -165,32 +176,123 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-		//Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,FRONT);
-		Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,BACK);
-		sprintf(LF_str,"LF:%06d",Count_L_F);
-		lcd7735_putstr(0,0,LF_str,WHITE,BLACK);
+		HAL_UART_Receive_DMA(&huart4, (uint8_t*)get_buff, 8);
+		Data_Process();
+		Debug_Window();
+		if(get_direction!='x')
+		{
+			switch(get_direction)
+			{
+				
+				case 'a':
+				{
+					control_begin=1;
+					Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,FRONT);
+					break;
+				}
+				case 'b':
+				{
+					control_begin=1;
+					Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,BACK);
+					break;
+				}
+				case 'c':
+				{
+					control_begin=1;
+					Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,LEFT);
+					break;
+				}
+				case 'd':
+				{
+					control_begin=1;
+					Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,RIGHT);
+					break;
+				}
+				
+				
+				case 'e':
+				{
+					control_begin=1;
+					Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,TURN_LEFT);
+					break;
+				}
+				case 'f':
+				{
+					control_begin=1;
+					Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,TURN_RIGHT);
+					break;
+				}
+				
+				
+				case 's':
+				{
+					control_begin=0;
+					Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,STOP);
+					break;
+				}
+				
+				default:
+					break;
+			
+			}
+		}
+		else 
+		{
+			control_begin=1;
+			if(angle<0)
+			{	
+				PWM_Value_L_F+=Turn_Speed_Add(angle);
+				if(PWM_Value_L_F>=30)
+					PWM_Value_L_F=30;
+				else if(PWM_Value_L_F<=0)
+					PWM_Value_L_F=0;
+				PWM_Value_L_B+=Turn_Speed_Add(angle);
+				if(PWM_Value_L_B>=30)
+					PWM_Value_L_B=30;
+				else if(PWM_Value_L_B<=0)
+					PWM_Value_L_B=0;
+				PWM_Value_R_F-=Turn_Speed_Add(angle);
+				if(PWM_Value_R_F>=30)
+					PWM_Value_R_F=30;
+				else if(PWM_Value_R_F<=0)
+					PWM_Value_R_F=0;
+				PWM_Value_R_B-=Turn_Speed_Add(angle);
+				if(PWM_Value_R_B>=30)
+					PWM_Value_R_B=30;
+				else if(PWM_Value_R_B<=0)
+					PWM_Value_R_B=0;
+				
+			}
+			else if(angle>0)
+			{
+			
+				PWM_Value_L_F-=Turn_Speed_Add(angle);
+				if(PWM_Value_L_F>=30)
+					PWM_Value_L_F=30;
+				else if(PWM_Value_L_F<=0)
+					PWM_Value_L_F=0;
+				PWM_Value_L_B-=Turn_Speed_Add(angle);
+				if(PWM_Value_L_B>=30)
+					PWM_Value_L_B=30;
+				else if(PWM_Value_L_B<=0)
+					PWM_Value_L_B=0;
+				PWM_Value_R_F+=Turn_Speed_Add(angle);
+				if(PWM_Value_R_F>=30)
+					PWM_Value_R_F=30;
+				else if(PWM_Value_R_F<=0)
+					PWM_Value_R_F=0;
+				PWM_Value_R_B+=Turn_Speed_Add(angle);
+				if(PWM_Value_R_B>=30)
+					PWM_Value_R_B=30;
+				else if(PWM_Value_R_B<=0)
+					PWM_Value_R_B=0;
+			}
+			//Move(PWM_Value_L_F,PWM_Value_L_B,PWM_Value_R_F,PWM_Value_R_B,FRONT);
+			Auto_Control(PWM_Value_L_F,PWM_Value_R_B);
+		}
 		
-		sprintf(LB_str,"LB:%06d",Count_L_B);
-		lcd7735_putstr(12,0,LB_str,WHITE,BLACK);
 		
-		sprintf(RF_str,"RF:%06d",Count_R_F);
-		lcd7735_putstr(24,0,RF_str,WHITE,BLACK);
-		
-		sprintf(RB_str,"RB:%06d",Count_R_B);
-		lcd7735_putstr(36,0,RB_str,WHITE,BLACK);
-		
-		sprintf(LF_str,"LF_DUTY:%.2f",PWM_Value_L_F);
-		lcd7735_putstr(48,0,LF_str,WHITE,BLACK);
-		
-		sprintf(LB_str,"LB_DUTY:%.2f",PWM_Value_L_B);
-		lcd7735_putstr(60,0,LB_str,WHITE,BLACK);
-		
-		sprintf(RF_str,"RF_DUTY:%.2f",PWM_Value_R_F);
-		lcd7735_putstr(72,0,RF_str,WHITE,BLACK);
-		
-		sprintf(RB_str,"RB_DUTY:%.2f",PWM_Value_R_B);
-		lcd7735_putstr(84,0,RB_str,WHITE,BLACK);
-
+	
   }
   /* USER CODE END 3 */
 }
@@ -239,63 +341,126 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	
 	if(htim==(&htim6))
 	{
-		time_count++;
-	  if(time_count>100)
+		if(control_begin)
 		{
-			HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
-			
-			Get_Count_L_F=__HAL_TIM_GET_COUNTER(&htim1);
-			Get_Count_L_B=__HAL_TIM_GET_COUNTER(&htim2);
-			Get_Count_R_F=__HAL_TIM_GET_COUNTER(&htim3);
-			Get_Count_R_B=__HAL_TIM_GET_COUNTER(&htim4);
+			time_count++;
+			if(time_count>100)
+			{
+				HAL_GPIO_TogglePin(LED_GPIO_Port,LED_Pin);
 				
-			Count_L_F=32767-Get_Count_L_F;
-			Count_L_B=32767-Get_Count_L_B;
-			Count_R_F=32767-Get_Count_R_F;
-			Count_R_B=32767-Get_Count_R_B;
-			
-			if(Count_L_F<0)
-				Count_L_F=-Count_L_F;
-			if(Count_L_B<0)
-				Count_L_B=-Count_L_B;
-				if(Count_R_F<0)
-				Count_R_F=-Count_R_F;
-			if(Count_R_B<0)
-				Count_R_B=-Count_R_B;
-			
-			PWM_Value_L_F+=Speed_Adjust(Count_L_F);
-			if(PWM_Value_L_F>90)
-				PWM_Value_L_F=90;
-			if(PWM_Value_L_F<0)
-				PWM_Value_L_F=0;
-			PWM_Value_L_B+=Speed_Adjust(Count_L_B);
-			if(PWM_Value_L_B>90)
-				PWM_Value_L_B=90;
-			if(PWM_Value_L_B<0)
-				PWM_Value_L_B=0;
-			PWM_Value_R_F+=Speed_Adjust(Count_R_F);
-			if(PWM_Value_R_F>90)
-				PWM_Value_R_F=90;
-			if(PWM_Value_R_F<0)
-				PWM_Value_R_F=0;
-			PWM_Value_R_B+=Speed_Adjust(Count_R_B);
-			if(PWM_Value_R_B>90)
-				PWM_Value_R_B=90;
-			if(PWM_Value_R_B<0)
-				PWM_Value_R_B=0;
-			
-			__HAL_TIM_SET_COUNTER(&htim1,32767);
-			__HAL_TIM_SET_COUNTER(&htim2,32767);
-			__HAL_TIM_SET_COUNTER(&htim3,32767);
-			__HAL_TIM_SET_COUNTER(&htim4,32767);
-			
-			time_count=0;
+				Get_Count_L_F=__HAL_TIM_GET_COUNTER(&htim1);
+				Get_Count_L_B=__HAL_TIM_GET_COUNTER(&htim2);
+				Get_Count_R_F=__HAL_TIM_GET_COUNTER(&htim3);
+				Get_Count_R_B=__HAL_TIM_GET_COUNTER(&htim4);
+					
+				Count_L_F=32767-Get_Count_L_F;
+				Count_L_B=32767-Get_Count_L_B;
+				Count_R_F=32767-Get_Count_R_F;
+				Count_R_B=32767-Get_Count_R_B;
+				
+				if(Count_L_F<0)
+					Count_L_F=-Count_L_F;
+				if(Count_L_B<0)
+					Count_L_B=-Count_L_B;
+					if(Count_R_F<0)
+					Count_R_F=-Count_R_F;
+				if(Count_R_B<0)
+					Count_R_B=-Count_R_B;
+				
+				PWM_Value_L_F+=Speed_Adjust(Count_L_F);
+				if(PWM_Value_L_F>=30)
+					PWM_Value_L_F=30;
+				else if(PWM_Value_L_F<=0)
+					PWM_Value_L_F=0;
+				PWM_Value_L_B+=Speed_Adjust(Count_L_B);
+				if(PWM_Value_L_B>=30)
+					PWM_Value_L_B=30;
+				else if(PWM_Value_L_B<=0)
+					PWM_Value_L_B=0;
+				PWM_Value_R_F+=Speed_Adjust(Count_R_F);
+				if(PWM_Value_R_F>=30)
+					PWM_Value_R_F=30;
+				else if(PWM_Value_R_F<=0)
+					PWM_Value_R_F=0;
+				PWM_Value_R_B+=Speed_Adjust(Count_R_B);
+				if(PWM_Value_R_B>=30)
+					PWM_Value_R_B=30;
+				else if(PWM_Value_R_B<=0)
+					PWM_Value_R_B=0;
+				
+				__HAL_TIM_SET_COUNTER(&htim1,32767);
+				__HAL_TIM_SET_COUNTER(&htim2,32767);
+				__HAL_TIM_SET_COUNTER(&htim3,32767);
+				__HAL_TIM_SET_COUNTER(&htim4,32767);
+				
+				time_count=0;
+			}
 		}
-		
+		else 
+		{
+			time_count=0;
+			PWM_Value_L_F=0;
+			PWM_Value_L_B=0;
+			PWM_Value_R_F=0;
+			PWM_Value_R_B=0;
+			Count_L_F=0;
+			Count_L_B=0;
+			Count_R_F=0;
+			Count_R_B=0;
+		}
+			
 	}
-
 }
 
+
+void Debug_Window()
+{
+	sprintf(show_str,"LF:%06d",Count_L_F);
+	lcd7735_putstr(0,0,show_str,WHITE,BLACK);
+		
+	sprintf(show_str,"LB:%06d",Count_L_B);
+	lcd7735_putstr(12,0,show_str,WHITE,BLACK);
+		
+	sprintf(show_str,"RF:%06d",Count_R_F);
+	lcd7735_putstr(24,0,show_str,WHITE,BLACK);
+		
+	sprintf(show_str,"RB:%06d",Count_R_B);
+	lcd7735_putstr(36,0,show_str,WHITE,BLACK);
+		
+	sprintf(show_str,"LF_DUTY:%.2f",PWM_Value_L_F);
+	lcd7735_putstr(48,0,show_str,WHITE,BLACK);
+		
+	sprintf(show_str,"LB_DUTY:%.2f",PWM_Value_L_B);
+	lcd7735_putstr(60,0,show_str,WHITE,BLACK);
+		
+	sprintf(show_str,"RF_DUTY:%.2f",PWM_Value_R_F);
+	lcd7735_putstr(72,0,show_str,WHITE,BLACK);
+		
+	sprintf(show_str,"RB_DUTY:%.2f",PWM_Value_R_B);
+	lcd7735_putstr(84,0,show_str,WHITE,BLACK);
+	
+	sprintf(show_str,"rec_str is %s",get_buff);
+	lcd7735_putstr(96,0,show_str,WHITE,BLACK);
+	
+	sprintf(show_str,"control:%c %04d",get_direction,angle);
+	lcd7735_putstr(108,0,show_str,WHITE,BLACK);
+	
+}
+
+void Data_Process()
+{
+	get_direction=get_buff[1];
+	
+	control_angle_single[0]=get_buff[3];
+	
+	memcpy(control_angle,get_buff+5,3);
+	control_angle[3]='\0';
+	
+	angle=(control_angle[0]-'0')*100+(control_angle[1]-'0')*10+(control_angle[2]-'0');
+	
+	if(control_angle_single[0]=='0')
+		angle=-angle;
+}
 /* USER CODE END 4 */
 
 /**
